@@ -18,6 +18,14 @@ import (
 func ConvertToModel(v string, roots []Root) []models.Definition {
 	defs := map[string]models.Definition{}
 	for _, root := range roots {
+		rpmInfoTestIdx := make(map[string]RpminfoTest)
+		for _, r := range root.Tests.RpminfoTests {
+			rpmInfoTestIdx[r.ID] = r
+		}
+		rpmInfoStateIdx := make(map[string]RpminfoState)
+		for _, r := range root.States.RpminfoStates {
+			rpmInfoStateIdx[r.ID] = r
+		}
 		for _, d := range root.Definitions.Definitions {
 			if strings.HasPrefix(d.ID, "oval:com.redhat.unaffected:def:") || strings.Contains(d.Description, "** REJECT **") {
 				continue
@@ -93,7 +101,7 @@ func ConvertToModel(v string, roots []Root) []models.Definition {
 					Issued:             issued,
 					Updated:            updated,
 				},
-				AffectedPacks: collectRedHatPacks(v, d.Criteria),
+				AffectedPacks: collectRedHatPacks(v, d.Criteria, rpmInfoTestIdx, rpmInfoStateIdx),
 				References:    rs,
 			}
 
@@ -116,12 +124,12 @@ func ConvertToModel(v string, roots []Root) []models.Definition {
 	return slices.Collect(maps.Values(defs))
 }
 
-func collectRedHatPacks(v string, cri Criteria) []models.Package {
+func collectRedHatPacks(v string, cri Criteria, testIdx map[string]RpminfoTest, stateIdx map[string]RpminfoState) []models.Package {
 	pkgs := map[string]models.Package{}
-	for _, p := range walkRedHat(cri, []models.Package{}, "") {
-		n := p.Name
+	for _, p := range walkRedHat(cri, []models.Package{}, "", testIdx, stateIdx) {
+		n := p.Name + p.Arch
 		if p.ModularityLabel != "" {
-			n = fmt.Sprintf("%s::%s", p.ModularityLabel, p.Name)
+			n = fmt.Sprintf("%s::%s", p.ModularityLabel, n)
 		}
 
 		if p.NotFixedYet {
@@ -149,7 +157,7 @@ func collectRedHatPacks(v string, cri Criteria) []models.Package {
 	return slices.Collect(maps.Values(pkgs))
 }
 
-func walkRedHat(cri Criteria, acc []models.Package, label string) []models.Package {
+func walkRedHat(cri Criteria, acc []models.Package, label string, testIdx map[string]RpminfoTest, stateIdx map[string]RpminfoState) []models.Package {
 	for _, c := range cri.Criterions {
 		switch {
 		case strings.HasPrefix(c.Comment, "Module ") && strings.HasSuffix(c.Comment, " is enabled"):
@@ -157,6 +165,21 @@ func walkRedHat(cri Criteria, acc []models.Package, label string) []models.Packa
 		case strings.Contains(c.Comment, " is earlier than "):
 			ss := strings.Split(c.Comment, " is earlier than ")
 			if len(ss) != 2 {
+				continue
+			}
+			test := testIdx[c.TestRef]
+			state := stateIdx[test.State.StateRef]
+			architectures := strings.Split(state.Arch.Text, "|")
+			if len(architectures) > 0 {
+				for _, a := range architectures {
+					acc = append(acc, models.Package{
+						Name:            ss[0],
+						Version:         strings.Split(ss[1], " ")[0],
+						ModularityLabel: label,
+						Arch:            a,
+					})
+				}
+
 				continue
 			}
 			acc = append(acc, models.Package{
@@ -177,7 +200,7 @@ func walkRedHat(cri Criteria, acc []models.Package, label string) []models.Packa
 		return acc
 	}
 	for _, c := range cri.Criterias {
-		acc = walkRedHat(c, acc, label)
+		acc = walkRedHat(c, acc, label, testIdx, stateIdx)
 	}
 	return acc
 }
