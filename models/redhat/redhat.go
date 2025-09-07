@@ -18,7 +18,6 @@ import (
 func ConvertToModel(v string, roots []Root) []models.Definition {
 	defs := map[string]models.Definition{}
 	for _, root := range roots {
-		// fmt.Printf("root.States.RpminfoStates: %+v\n", root.States.RpminfoStates)
 		rpmInfoTestIdx := make(map[string]RpminfoTest)
 		for _, r := range root.Tests.RpminfoTests {
 			rpmInfoTestIdx[r.ID] = r
@@ -155,7 +154,6 @@ func collectRedHatPacks(v string, cri Criteria, testIdx map[string]RpminfoTest, 
 
 		pkgs[n] = p
 	}
-	// fmt.Printf("pkgs: %v\n", pkgs)
 	return slices.Collect(maps.Values(pkgs))
 }
 
@@ -169,16 +167,11 @@ func walkRedHat(cri Criteria, acc []models.Package, label string, testIdx map[st
 			if len(ss) != 2 {
 				continue
 			}
-			// fmt.Printf("testIdx: %v\n", testIdx)
-			// fmt.Printf("stateIdx: %v\n", stateIdx)
-			// fmt.Printf("c: %+v\n", c)
 			test := testIdx[c.TestRef]
 			state := stateIdx[test.State.StateRef]
 			architectures := strings.Split(state.Arch.Text, "|")
-			// fmt.Printf("architectures: %v\n", architectures)
 			if len(architectures) > 0 {
 				for _, a := range architectures {
-					// fmt.Printf("adding package for arch a: %v\n", a)
 					acc = append(acc, models.Package{
 						Name:            ss[0],
 						Version:         strings.Split(ss[1], " ")[0],
@@ -186,8 +179,6 @@ func walkRedHat(cri Criteria, acc []models.Package, label string, testIdx map[st
 						Arch:            a,
 					})
 				}
-
-				// fmt.Printf("acc: %v\n", acc)
 
 				continue
 			}
